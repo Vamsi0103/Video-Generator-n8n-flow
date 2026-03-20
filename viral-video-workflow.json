@@ -1,0 +1,408 @@
+{
+  "name": "Viral Video Generator - Complete",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-video",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 400],
+      "webhookId": "video-generator"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "topic",
+              "value": "={{$json.body.topic || 'AI Technology Trends'}}"
+            },
+            {
+              "name": "duration",
+              "value": "={{$json.body.duration || '60'}}"
+            },
+            {
+              "name": "style",
+              "value": "={{$json.body.style || 'motivational'}}"
+            },
+            {
+              "name": "email",
+              "value": "={{$json.body.email}}"
+            },
+            {
+              "name": "platform",
+              "value": "={{$json.body.platform || 'youtube_shorts'}}"
+            }
+          ]
+        }
+      },
+      "id": "set-variables",
+      "name": "Set Video Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4-turbo-preview\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a viral short-form video script writer. Create engaging scripts optimized for platforms like TikTok, YouTube Shorts, and Instagram Reels. Return response as JSON with this structure: {\\\"title\\\": string, \\\"hook\\\": string, \\\"scenes\\\": [{\\\"text\\\": string, \\\"visual\\\": string, \\\"duration\\\": number}], \\\"cta\\\": string}\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Create a {{$json.duration}}-second {{$json.style}} video script about: {{$json.topic}}. Include 5-7 scenes with narration text and visual descriptions. Make it VIRAL and attention-grabbing. Start with a powerful hook in the first 3 seconds.\"\n    }\n  ],\n  \"response_format\": { \"type\": \"json_object\" },\n  \"temperature\": 0.9\n}",
+        "options": {}
+      },
+      "id": "generate-script",
+      "name": "Generate Script (OpenAI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the OpenAI response and extract scenes\nconst response = JSON.parse($input.item.json.choices[0].message.content);\n\nconst outputItems = [\n  {\n    json: {\n      title: response.title,\n      hook: response.hook,\n      fullScript: response.scenes.map(s => s.text).join(' '),\n      scenes: response.scenes,\n      cta: response.cta,\n      totalScenes: response.scenes.length\n    }\n  }\n];\n\nreturn outputItems;"
+      },
+      "id": "parse-script",
+      "name": "Parse Script JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "merge-voiceover",
+      "name": "Merge Voiceover",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1560, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": \"{{$json.fullScript}}\",\n  \"model_id\": \"eleven_turbo_v2\",\n  \"voice_settings\": {\n    \"stability\": 0.5,\n    \"similarity_boost\": 0.75,\n    \"style\": 0.5,\n    \"use_speaker_boost\": true\n  }\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "voiceoverData"
+            }
+          }
+        }
+      },
+      "id": "generate-voiceover",
+      "name": "Generate Voiceover (ElevenLabs)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "elevenlabs-auth",
+          "name": "ElevenLabs API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "voiceoverData",
+        "fileName": "=voiceover-{{$now.format('X')}}.mp3",
+        "options": {}
+      },
+      "id": "save-voiceover",
+      "name": "Save Voiceover File",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.pexels.com/videos/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{$json.scenes[0].visual}}"
+            },
+            {
+              "name": "per_page",
+              "value": "1"
+            },
+            {
+              "name": "orientation",
+              "value": "portrait"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-stock-video",
+      "name": "Fetch Stock Video (Pexels)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 600],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "pexels-auth",
+          "name": "Pexels API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$json.videos[0].video_files.find(v => v.quality === 'hd').link}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "videoData"
+            }
+          }
+        }
+      },
+      "id": "download-video",
+      "name": "Download Stock Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 600]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "merge-video",
+      "name": "Merge Video Assets",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1560, 600]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "merge-all",
+      "name": "Merge All Assets",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1780, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate FFmpeg command to combine video and audio\nconst { execSync } = require('child_process');\nconst fs = require('fs');\nconst path = require('path');\n\n// Create temp directory\nconst tempDir = '/tmp/n8n-videos';\nif (!fs.existsSync(tempDir)) {\n  fs.mkdirSync(tempDir, { recursive: true });\n}\n\nconst timestamp = Date.now();\nconst videoPath = path.join(tempDir, `video-${timestamp}.mp4`);\nconst audioPath = path.join(tempDir, `audio-${timestamp}.mp3`);\nconst outputPath = path.join(tempDir, `final-${timestamp}.mp4`);\n\n// Save video file\nconst videoBuffer = Buffer.from($input.item.binary.videoData.data, 'base64');\nfs.writeFileSync(videoPath, videoBuffer);\n\n// Save audio file\nconst audioBuffer = Buffer.from($input.item.binary.voiceoverData.data, 'base64');\nfs.writeFileSync(audioPath, audioBuffer);\n\n// Get video duration\nconst duration = parseInt($input.item.json.duration || '60');\n\n// FFmpeg command to:\n// 1. Trim video to duration\n// 2. Add audio\n// 3. Add fade in/out\n// 4. Optimize for mobile\nconst command = `ffmpeg -i \"${videoPath}\" -i \"${audioPath}\" \\\n  -t ${duration} \\\n  -c:v libx264 -preset fast -crf 22 \\\n  -c:a aac -b:a 192k \\\n  -vf \"fade=t=in:st=0:d=0.5,fade=t=out:st=${duration - 0.5}:d=0.5,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2\" \\\n  -movflags +faststart \\\n  -y \"${outputPath}\"`;\n\ntry {\n  execSync(command, { stdio: 'pipe' });\n  \n  // Read final video\n  const finalVideo = fs.readFileSync(outputPath);\n  \n  // Cleanup temp files\n  fs.unlinkSync(videoPath);\n  fs.unlinkSync(audioPath);\n  \n  return [{\n    json: {\n      ...$input.item.json,\n      outputPath,\n      fileSize: finalVideo.length,\n      status: 'success'\n    },\n    binary: {\n      finalVideo: {\n        data: finalVideo.toString('base64'),\n        mimeType: 'video/mp4',\n        fileName: `viral-video-${timestamp}.mp4`,\n        fileExtension: 'mp4'\n      }\n    }\n  }];\n} catch (error) {\n  return [{\n    json: {\n      status: 'error',\n      error: error.message\n    }\n  }];\n}"
+      },
+      "id": "assemble-video",
+      "name": "Assemble Final Video (FFmpeg)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate SRT subtitle file\nconst scenes = $input.item.json.scenes || [];\nlet srtContent = '';\nlet currentTime = 0;\n\nscenes.forEach((scene, index) => {\n  const duration = scene.duration || 8;\n  const startTime = currentTime;\n  const endTime = currentTime + duration;\n  \n  srtContent += `${index + 1}\\n`;\n  srtContent += `${formatSrtTime(startTime)} --> ${formatSrtTime(endTime)}\\n`;\n  srtContent += `${scene.text}\\n\\n`;\n  \n  currentTime = endTime;\n});\n\nfunction formatSrtTime(seconds) {\n  const h = Math.floor(seconds / 3600).toString().padStart(2, '0');\n  const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');\n  const s = Math.floor(seconds % 60).toString().padStart(2, '0');\n  const ms = Math.floor((seconds % 1) * 1000).toString().padStart(3, '0');\n  return `${h}:${m}:${s},${ms}`;\n}\n\nreturn [{\n  json: {\n    ...$input.item.json,\n    srtContent\n  },\n  binary: $input.item.binary\n}];"
+      },
+      "id": "generate-captions",
+      "name": "Generate Captions (SRT)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Add captions to video using FFmpeg\nconst { execSync } = require('child_process');\nconst fs = require('fs');\nconst path = require('path');\n\nconst tempDir = '/tmp/n8n-videos';\nconst timestamp = Date.now();\nconst srtPath = path.join(tempDir, `captions-${timestamp}.srt`);\nconst inputPath = $input.item.json.outputPath;\nconst finalPath = path.join(tempDir, `captioned-${timestamp}.mp4`);\n\n// Save SRT file\nfs.writeFileSync(srtPath, $input.item.json.srtContent);\n\n// Add captions with styling\nconst command = `ffmpeg -i \"${inputPath}\" \\\n  -vf \"subtitles=${srtPath}:force_style='FontName=Arial,FontSize=24,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Shadow=1,Alignment=2,MarginV=40'\" \\\n  -c:a copy \\\n  -y \"${finalPath}\"`;\n\ntry {\n  execSync(command, { stdio: 'pipe' });\n  \n  const finalVideo = fs.readFileSync(finalPath);\n  \n  // Cleanup\n  fs.unlinkSync(inputPath);\n  fs.unlinkSync(srtPath);\n  \n  return [{\n    json: {\n      ...$input.item.json,\n      finalPath,\n      captionsAdded: true\n    },\n    binary: {\n      finalVideo: {\n        data: finalVideo.toString('base64'),\n        mimeType: 'video/mp4',\n        fileName: `viral-video-${timestamp}.mp4`,\n        fileExtension: 'mp4'\n      }\n    }\n  }];\n} catch (error) {\n  return [{\n    json: {\n      ...$input.item.json,\n      captionsError: error.message\n    },\n    binary: $input.item.binary\n  }];\n}"
+      },
+      "id": "add-captions",
+      "name": "Add Captions to Video",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 400]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "bucket": {
+          "__rl": true,
+          "value": "viral-videos",
+          "mode": "list",
+          "cachedResultName": "viral-videos"
+        },
+        "fileName": "=videos/{{$now.format('YYYY-MM-DD')}}/viral-video-{{$now.format('X')}}.mp4",
+        "binaryData": true,
+        "binaryPropertyName": "finalVideo",
+        "options": {
+          "acl": "publicRead"
+        }
+      },
+      "id": "upload-s3",
+      "name": "Upload to S3 (Optional)",
+      "type": "n8n-nodes-base.aws.s3",
+      "typeVersion": 1,
+      "position": [2660, 400],
+      "disabled": true,
+      "credentials": {
+        "aws": {
+          "id": "aws-credentials",
+          "name": "AWS S3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "videos@yourdomain.com",
+        "toEmail": "={{$json.email}}",
+        "subject": "🎥 Your Viral Video is Ready!",
+        "emailType": "html",
+        "message": "=<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; }\n    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }\n    .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }\n    .video-info { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; }\n    .button { display: inline-block; background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 10px 0; }\n    .stats { display: flex; justify-content: space-around; margin: 20px 0; }\n    .stat { text-align: center; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>🎥 Your Video is Ready!</h1>\n      <p>{{$json.title}}</p>\n    </div>\n    <div class=\"content\">\n      <p>Hi there! 👋</p>\n      <p>Your viral video about <strong>{{$json.topic}}</strong> has been successfully created and is ready to go!</p>\n      \n      <div class=\"video-info\">\n        <h2>Video Details:</h2>\n        <div class=\"stats\">\n          <div class=\"stat\">\n            <strong>Duration</strong><br>\n            {{$json.duration}}s\n          </div>\n          <div class=\"stat\">\n            <strong>Resolution</strong><br>\n            1080x1920\n          </div>\n          <div class=\"stat\">\n            <strong>Style</strong><br>\n            {{$json.style}}\n          </div>\n        </div>\n      </div>\n      \n      <p><strong>Hook:</strong> {{$json.hook}}</p>\n      \n      <p style=\"text-align: center;\">\n        <a href=\"#\" class=\"button\">Download Video</a>\n      </p>\n      \n      <h3>✨ What's Included:</h3>\n      <ul>\n        <li>✅ AI-generated script optimized for engagement</li>\n        <li>✅ Professional AI voiceover</li>\n        <li>✅ High-quality stock footage</li>\n        <li>✅ Auto-generated captions</li>\n        <li>✅ Optimized for {{$json.platform}}</li>\n      </ul>\n      \n      <h3>🚀 Ready to Upload?</h3>\n      <p>Your video is optimized and ready to upload to:</p>\n      <ul>\n        <li>TikTok</li>\n        <li>YouTube Shorts</li>\n        <li>Instagram Reels</li>\n        <li>Facebook Reels</li>\n      </ul>\n      \n      <p style=\"color: #666; font-size: 14px; margin-top: 30px;\">\n        <strong>File Size:</strong> {{Math.round($json.fileSize / 1024 / 1024)}}MB<br>\n        <strong>Format:</strong> MP4 (H.264)<br>\n        <strong>Generated:</strong> {{$now.format('MMMM Do YYYY, h:mm a')}}\n      </p>\n    </div>\n  </div>\n</body>\n</html>",
+        "options": {
+          "attachments": "finalVideo"
+        }
+      },
+      "id": "send-email",
+      "name": "Send Email with Video",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [2880, 400],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-credentials",
+          "name": "SMTP Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"message\": \"Video generated successfully and sent to {{$json.email}}\",\n  \"videoTitle\": \"{{$json.title}}\",\n  \"duration\": {{$json.duration}},\n  \"fileSize\": \"{{Math.round($json.fileSize / 1024 / 1024)}}MB\",\n  \"timestamp\": \"{{$now.toISO()}}\"\n}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [3100, 400]
+    },
+    {
+      "parameters": {},
+      "id": "error-trigger",
+      "name": "On Error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [240, 800]
+    },
+    {
+      "parameters": {
+        "fromEmail": "errors@yourdomain.com",
+        "toEmail": "admin@yourdomain.com",
+        "subject": "❌ Video Generation Failed",
+        "message": "=Error Details:\n\nNode: {{$json.node.name}}\nError: {{$json.error.message}}\nTimestamp: {{$now.format('YYYY-MM-DD HH:mm:ss')}}\n\nInput Data:\n{{JSON.stringify($json.inputData, null, 2)}}",
+        "options": {}
+      },
+      "id": "send-error-email",
+      "name": "Send Error Notification",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [460, 800]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{"node": "Set Video Parameters", "type": "main", "index": 0}]]
+    },
+    "Set Video Parameters": {
+      "main": [[{"node": "Generate Script (OpenAI)", "type": "main", "index": 0}]]
+    },
+    "Generate Script (OpenAI)": {
+      "main": [[{"node": "Parse Script JSON", "type": "main", "index": 0}]]
+    },
+    "Parse Script JSON": {
+      "main": [
+        [
+          {"node": "Generate Voiceover (ElevenLabs)", "type": "main", "index": 0},
+          {"node": "Fetch Stock Video (Pexels)", "type": "main", "index": 0},
+          {"node": "Merge All Assets", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Generate Voiceover (ElevenLabs)": {
+      "main": [[{"node": "Save Voiceover File", "type": "main", "index": 0}]]
+    },
+    "Save Voiceover File": {
+      "main": [[{"node": "Merge Voiceover", "type": "main", "index": 0}]]
+    },
+    "Merge Voiceover": {
+      "main": [[{"node": "Merge All Assets", "type": "main", "index": 1}]]
+    },
+    "Fetch Stock Video (Pexels)": {
+      "main": [[{"node": "Download Stock Video", "type": "main", "index": 0}]]
+    },
+    "Download Stock Video": {
+      "main": [[{"node": "Merge Video Assets", "type": "main", "index": 0}]]
+    },
+    "Merge Video Assets": {
+      "main": [[{"node": "Merge All Assets", "type": "main", "index": 2}]]
+    },
+    "Merge All Assets": {
+      "main": [[{"node": "Assemble Final Video (FFmpeg)", "type": "main", "index": 0}]]
+    },
+    "Assemble Final Video (FFmpeg)": {
+      "main": [[{"node": "Generate Captions (SRT)", "type": "main", "index": 0}]]
+    },
+    "Generate Captions (SRT)": {
+      "main": [[{"node": "Add Captions to Video", "type": "main", "index": 0}]]
+    },
+    "Add Captions to Video": {
+      "main": [[{"node": "Upload to S3 (Optional)", "type": "main", "index": 0}]]
+    },
+    "Upload to S3 (Optional)": {
+      "main": [[{"node": "Send Email with Video", "type": "main", "index": 0}]]
+    },
+    "Send Email with Video": {
+      "main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]
+    },
+    "On Error": {
+      "main": [[{"node": "Send Error Notification", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
